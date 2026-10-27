@@ -1,0 +1,57 @@
+name: Set default layout
+
+# Run from the Actions tab (or the hidden Ctrl+Shift+L bar on the site).
+# Copies the chosen vN.html over index.html, so it becomes the page everyone sees.
+on:
+  workflow_dispatch:
+    inputs:
+      layout:
+        description: Layout to show to everyone
+        required: true
+        default: v1
+        type: choice
+        options:
+          - v1
+          - v2
+          - v3
+          - v4
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: set-layout
+  cancel-in-progress: false
+
+jobs:
+  set-layout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make the chosen layout the home page
+        id: copy
+        env:
+          LAYOUT: ${{ inputs.layout }}
+        run: |
+          set -euo pipefail
+          test -f "$LAYOUT.html"
+          if cmp -s "$LAYOUT.html" index.html; then
+            echo "$LAYOUT is already the default."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cp "$LAYOUT.html" index.html
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Set default layout to $LAYOUT"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Request a GitHub Pages rebuild
+        if: steps.copy.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/${{ github.repository }}/pages/builds" || echo "Pages will rebuild from the push."
